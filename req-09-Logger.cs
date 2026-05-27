@@ -1,90 +1,90 @@
+/*
+═══════════════════════════════════════════════════════════════
+REQUISITO 9 - LOG POR DÍA CON IP DE ORIGEN
+═══════════════════════════════════════════════════════════════
+
+Registra todas las solicitudes HTTP en archivos de log diarios,
+incluyendo la IP de origen del cliente.
+
+┌─────────────────────────────────────────────────────────┐
+│ Req 9 - Log por día                                     │
+│ "Los datos de todas las solicitudes deben loguearse en  │
+│  un archivo por día, incluyendo la IP de origen."       │
+└─────────────────────────────────────────────────────────┘
+- Cada día se crea un archivo: logs/YYYY-MM-DD.log
+- Formato: [YYYY-MM-DD HH:mm:ss] IP - METODO Ruta - Código
+- Usa lock(_candado) para seguridad multi-hilo
+═══════════════════════════════════════════════════════════════
+*/
+
 using System;
 using System.IO;
 using System.Text;
 
-namespace ServidorWeb
+namespace ServidorWeb;
+
+public static class Logger
 {
-    /*
-    ═══════════════════════════════════════════════════════════════
-    REQUISITO 9 - LOG POR DÍA CON IP DE ORIGEN
-    ═══════════════════════════════════════════════════════════════
+    // Objeto para sincronizar el acceso al archivo de log.
+    // lock garantiza que solo un hilo escriba a la vez.
+    private static readonly object _candado = new();
 
-    Registra todas las solicitudes HTTP en archivos de log diarios,
-    incluyendo la IP de origen del cliente.
+    private static readonly string _carpetaLogs;
+    private static string _fechaActual = "";
+    private static string _rutaArchivoActual = "";
 
-    ┌─────────────────────────────────────────────────────────┐
-    │ Req 9 - Log por día                                     │
-    │ "Los datos de todas las solicitudes deben loguearse en  │
-    │  un archivo por día, incluyendo la IP de origen."       │
-    └─────────────────────────────────────────────────────────┘
-    - Cada día se crea un archivo: logs/YYYY-MM-DD.log
-    - Formato: [YYYY-MM-DD HH:mm:ss] IP - METODO Ruta - Código
-    - Usa lock(_candado) para seguridad multi-hilo
-    ═══════════════════════════════════════════════════════════════
-    */
-
-    public static class Logger
+    static Logger()
     {
-        // Objeto para sincronizar el acceso al archivo de log.
-        // lock garantiza que solo un hilo escriba a la vez.
-        private static readonly object _candado = new();
+        _carpetaLogs = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+        ActualizarRutaArchivo();
+    }
 
-        private static readonly string _carpetaLogs;
-        private static string _fechaActual = "";
-        private static string _rutaArchivoActual = "";
-
-        static Logger()
+    // Registra una solicitud HTTP en el archivo de log del día.
+    // lock(_candado) evita corrupción por escritura concurrente.
+    public static void Registrar(string ipOrigen, string metodo, string ruta,
+                                    string codigoEstado,
+                                    string? parametros = null, string? cuerpo = null)
+    {
+        try
         {
-            _carpetaLogs = Path.Combine(Directory.GetCurrentDirectory(), "logs");
-            ActualizarRutaArchivo();
-        }
-
-        // Registra una solicitud HTTP en el archivo de log del día.
-        // lock(_candado) evita corrupción por escritura concurrente.
-        public static void Registrar(string ipOrigen, string metodo, string ruta,
-                                     string codigoEstado,
-                                     string? parametros = null, string? cuerpo = null)
-        {
-            try
+            lock (_candado)
             {
-                lock (_candado)
-                {
-                    ActualizarRutaArchivo();
+                ActualizarRutaArchivo();
 
-                    StringBuilder sb = new StringBuilder();
-                    string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    sb.Append($"[{timestamp}] {ipOrigen} - {metodo} {ruta} - {codigoEstado}");
+                StringBuilder sb = new StringBuilder();
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                sb.Append($"[{timestamp}] {ipOrigen} - {metodo} {ruta} - {codigoEstado}");
 
-                    if (!string.IsNullOrEmpty(parametros))
-                        sb.Append($" | Parámetros: {parametros}");
+                if (!string.IsNullOrEmpty(parametros))
+                    sb.Append($" | Parámetros: {parametros}");
 
-                    if (!string.IsNullOrEmpty(cuerpo))
-                        sb.Append($" | Body: {cuerpo}");
+                if (!string.IsNullOrEmpty(cuerpo))
+                    sb.Append($" | Body: {cuerpo}");
 
-                    sb.AppendLine();
+                sb.AppendLine();
 
-                    File.AppendAllText(_rutaArchivoActual, sb.ToString());
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Logger ERROR] No se pudo escribir en el log: {ex.Message}");
+                File.AppendAllText(_rutaArchivoActual, sb.ToString());
             }
         }
-
-        private static void ActualizarRutaArchivo()
+        catch (Exception ex)
         {
-            string fechaHoy = DateTime.Now.ToString("yyyy-MM-dd");
+            Console.WriteLine($"[Logger ERROR] No se pudo escribir en el log: {ex.Message}");
+        }
+    }
 
-            if (fechaHoy != _fechaActual)
-            {
-                _fechaActual = fechaHoy;
+    private static void ActualizarRutaArchivo()
+    {
+        string fechaHoy = DateTime.Now.ToString("yyyy-MM-dd");
 
-                if (!Directory.Exists(_carpetaLogs))
-                    Directory.CreateDirectory(_carpetaLogs);
+        if (fechaHoy != _fechaActual)
+        {
+            _fechaActual = fechaHoy;
 
-                _rutaArchivoActual = Path.Combine(_carpetaLogs, $"{fechaHoy}.log");
-            }
+            if (!Directory.Exists(_carpetaLogs))
+                Directory.CreateDirectory(_carpetaLogs);
+
+            _rutaArchivoActual = Path.Combine(_carpetaLogs, $"{fechaHoy}.log");
         }
     }
 }
+
