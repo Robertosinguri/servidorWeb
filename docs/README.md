@@ -19,7 +19,7 @@
 
 ## 🧠 Arquitectura General
 
-El servidor usa un **SemaphoreSlim** para limitar la concurrencia a 10 hilos como máximo. Cuando un cliente se conecta, el hilo aceptador espera en el semáforo, crea un hilo para procesar al cliente, y ese hilo libera el semáforo al terminar. No hay cola FIFO ni pool fijo de hilos.
+El servidor combina **ThreadPool + SemaphoreSlim** para manejar un número indefinido de solicitudes concurrentes sin saturar los recursos del sistema. Cuando un cliente se conecta, se encola en el ThreadPool con `QueueUserWorkItem()`. Dentro del hilo del ThreadPool, se adquiere un **SemaphoreSlim(50)** que limita a 50 ejecuciones simultáneas. Si ya hay 50 hilos activos, el hilo espera hasta que uno termine y libere el semáforo. Esto permite aceptar todas las solicitudes que lleguen (el ThreadPool nunca se bloquea) pero controla el uso de CPU, memoria y archivos abiertos.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -29,25 +29,29 @@ El servidor usa un **SemaphoreSlim** para limitar la concurrencia a 10 hilos com
 │  │   Socket TCP  │───▶│        Bucle de Aceptación          │   │
 │  │  (Escucha)    │    │  while(ejecutando) {                │   │
 │  │  Puerto:8080  │    │    cliente = socket.Accept();       │   │
-│  └──────────────┘    │    semaforo.Wait();  ← bloquea si    │   │
-│                      │    Thread(cliente).Start();          │   │
+│  └──────────────┘    │    ThreadPool.QueueUserWorkItem(     │   │
+│                      │      ProcesarCliente, cliente);      │   │
 │                      │  }                                   │   │
 │                      └────────────┬─────────────────────────┘   │
 │                                   │                             │
 │                                   ▼                             │
-│                      ┌──────────────────────┐                   │
-│                      │   SemaphoreSlim(10)   │                   │
-│                      │  Permite hasta 10     │                   │
-│                      │  hilos concurrentes   │                   │
-│                      │  El #11 espera hasta  │                   │
-│                      │  que uno termine      │                   │
-│                      └────────────┬──────────┘                   │
-│                                   │                             │
-│            ┌──────────────────────┼──────────────────────┐      │
-│            ▼                      ▼                      ▼      │
+│            ┌──────────────────────────────────────────┐         │
+│            │           ThreadPool de .NET              │         │
+│            │  Encola todas las solicitudes sin límite  │         │
+│            │  El runtime administra los hilos          │         │
+│            └────────────────────┬─────────────────────┘         │
+│                                 │                               │
+│                           ┌─────┴─────┐                         │
+│                           │ Semaphore  │                         │
+│                           │ Slim(50)   │  ← bloquea si ya hay   │
+│                           │ .Wait()    │    50 hilos activos    │
+│                           └─────┬─────┘                         │
+│                                 │                               │
+│            ┌────────────────────┼──────────────────────┐        │
+│            ▼                    ▼                      ▼        │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Hilo Cliente   │  │   Hilo Cliente   │  │   Hilo Cliente  │ │
-│  │   #1             │  │   #2             │  │   ... #10       │ │
+│  │  Hilo ThreadPool │  │  Hilo ThreadPool │  │  Hilo ThreadPool│ │
+│  │  #1              │  │  #2              │  │  ... #50        │ │
 │  │                  │  │                  │  │                 │ │
 │  │  Procesar()      │  │  Procesar()      │  │  Procesar()     │ │
 │  │  semaforo.Release│  │  semaforo.Release│  │  semaforo.Release│ │
@@ -65,7 +69,7 @@ El servidor usa un **SemaphoreSlim** para limitar la concurrencia a 10 hilos com
 │  │  7. Enviar respuesta al cliente                          │    │
 │  │  8. Registrar en log                                     │    │
 │  │  9. Cerrar conexión                                      │    │
-│  │  10. semaforo.Release() ← libera lugar para otro         │    │
+│  │  10. ThreadPool libera el hilo automáticamente           │    │
 │  └──────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -92,9 +96,10 @@ El servidor usa un **SemaphoreSlim** para limitar la concurrencia a 10 hilos com
 │              req-01-10-ServidorHTTP                   │
 │  ┌────────────────────────────────────────────────┐  │
 │  │ Socket TCP (Bind + Listen + Accept)            │  │
-│  │ SemaphoreSlim(10) para limitar concurrencia    │  │
-│  │ Cada cliente crea un hilo, el semáforo bloquea │  │
-│  │ si ya hay 10 ejecutándose                     │  │
+│  │ ThreadPool.QueueUserWorkItem() para            │  │
+│  │ concurrencia indefinida                       │  │
+│  │ SemaphoreSlim(50) dentro del hilo limita       │  │
+│  │ a 50 ejecuciones simultáneas                  │  │
 │  └────────────────────┬───────────────────────────┘  │
 └───────────────────────┼──────────────────────────────┘
                         │
@@ -147,7 +152,7 @@ El servidor usa un **SemaphoreSlim** para limitar la concurrencia a 10 hilos com
 ServidorWeb/
 │
 ├── 📄 req-01-10-Program.cs              # Punto de entrada
-├── 📄 req-01-10-ServidorHTTP.cs         # Socket TCP + Pool de hilos
+├── 📄 req-01-10-ServidorHTTP.cs         # Socket TCP + ThreadPool + SemaphoreSlim
 ├── 📄 req-02-05-06-ManejadorSolicitud.cs # Procesa cada solicitud
 ├── 📄 req-03-04-Configuracion.cs        # Configuración (puerto, ruta)
 ├── 📄 req-05-08-RespuestaHTTP.cs        # Construye respuestas HTTP
@@ -188,6 +193,76 @@ Luego abrir en el navegador: [http://localhost:8080](http://localhost:8080)
 | **Error 404** | `curl http://localhost:8080/no-existe.html` |
 | **Comprobar compresión** | `curl -H "Accept-Encoding: gzip" -o /dev/null -w "%{size_download}" http://localhost:8080/` |
 
+
+## ⚙️ Cómo manejamos la concurrencia
+
+El servidor usa **3 niveles de control de concurrencia**, cada uno con un propósito específico:
+
+### Nivel 1: ThreadPool (encolado de solicitudes)
+
+**Archivo:** `req-01-10-ServidorHTTP.cs`
+
+```
+ThreadPool.QueueUserWorkItem(ProcesarCliente, cliente);
+```
+
+- Cada cliente que se conecta se **encola en el ThreadPool** de .NET
+- El runtime administra los hilos automáticamente: crea nuevos si la carga aumenta, reutiliza los que terminan
+- **No hay límite** en la cantidad de solicitudes que puede encolar
+- El bucle de aceptación nunca se bloquea, puede seguir aceptando conexiones
+
+### Nivel 2: SemaphoreSlim (límite de ejecución simultánea)
+
+**Archivo:** `req-01-10-ServidorHTTP.cs`
+
+```csharp
+private readonly SemaphoreSlim _semaforo = new(50, 50);
+
+// Dentro del hilo del ThreadPool:
+_semaforo.Wait();     // Espera si ya hay 50 ejecutándose
+try { Procesar(); }
+finally { _semaforo.Release(); }  // Libera al terminar
+```
+
+- Se adquiere **dentro** del hilo del ThreadPool, así el ThreadPool nunca se bloquea
+- Limita a **50 ejecuciones simultáneas** para no saturar CPU, memoria y archivos abiertos
+- El hilo #51 queda en **standby** (esperando en `Wait()`) hasta que uno de los 50 activos termine
+- El `finally` garantiza que siempre se libere, incluso si hay excepción
+
+### Nivel 3: lock (protección del recurso compartido)
+
+**Archivo:** `req-09-Logger.cs`
+
+```csharp
+private static readonly object _candado = new();
+
+public static void Registrar(...)
+{
+    lock (_candado)
+    {
+        // Solo un hilo escribe al archivo de log a la vez
+        File.AppendAllText(_rutaArchivoActual, sb.ToString());
+    }
+}
+```
+
+- El **único recurso compartido** entre hilos es el archivo de log
+- `lock` garantiza exclusión mutua: dos hilos no pueden escribir al mismo `.log` simultáneamente
+- No hay riesgo de deadlock porque solo hay un `lock` en todo el sistema y nunca se adquiere dentro de otro `lock`
+
+### ¿Por qué es suficiente?
+
+| Recurso | ¿Compartido? | Protección |
+|---------|-------------|------------|
+| Socket del cliente | ❌ Cada hilo tiene el suyo | No necesita protección |
+| Archivo leído del disco | ❌ Cada hilo lee el suyo | No necesita protección |
+| Archivo de log | ✅ Todos los hilos escriben aquí | `lock(_candado)` |
+| Estado de RespuestaHTTP | ❌ Métodos estáticos sin estado | No necesita protección |
+| Estado de CompresorGZip | ❌ Métodos estáticos sin estado | No necesita protección |
+| Variable _ejecutando | ✅ Leída por todos los hilos | `volatile` |
+
+A diferencia del problema de los **5 filósofos** (donde varios procesos compiten por recursos limitados y pueden llegar a un deadlock), aquí cada hilo tiene sus propios recursos exclusivos (socket, archivo leído) y solo comparten el archivo de log con un `lock` simple. No se necesita `Mutex`, `Monitor`, `ReaderWriterLock` ni `SpinLock`.
+
 ---
 
 ## 🔍 Detalle por Requisito
@@ -195,7 +270,11 @@ Luego abrir en el navegador: [http://localhost:8080](http://localhost:8080)
 ### Requisito 1 - Concurrencia
 **Archivo:** `req-01-10-ServidorHTTP.cs`
 
-Se usa un **SemaphoreSlim(10, 10)** para limitar la concurrencia a 10 hilos como máximo. Cuando llega un cliente, el hilo aceptador llama a `_semaforo.Wait()`: si ya hay 10 hilos ejecutándose, se bloquea hasta que uno termine. Cada cliente se procesa en un hilo separado que libera el semáforo al finalizar (`_semaforo.Release()` en el `finally`). Esto evita crear hilos ilimitados y no necesita cola FIFO ni `Monitor.Wait/Pulse`.
+Se combina **ThreadPool.QueueUserWorkItem()** + **SemaphoreSlim(50)**:
+- ThreadPool encola cada cliente sin límite (número indefinido de solicitudes)
+- SemaphoreSlim limita a 50 ejecuciones simultáneas para no saturar recursos
+- El semáforo se adquiere dentro del hilo del ThreadPool, así el ThreadPool nunca se bloquea
+- El `finally` garantiza `Release()` incluso si hay excepción
 
 ### Requisito 2 - Index.html por defecto
 **Archivo:** `req-02-05-06-ManejadorSolicitud.cs`
@@ -215,7 +294,7 @@ Si el archivo no existe, se devuelve `HTTP/1.1 404 Not Found` con una página pe
 ### Requisito 6 - GET y POST
 **Archivos:** `req-02-05-06-ManejadorSolicitud.cs`, `req-06-07-SolicitudHTTP.cs`
 
-Se parsea el método HTTP. Para POST, además de servir el archivo, se loguea el cuerpo recibido.
+Se parsea el método HTTP. Para GET se sirve el archivo solicitado. Para POST **solo se loguean los datos recibidos** (cuerpo y parámetros) en el archivo de log, y se responde con 200 OK sin contenido. No se sirve ningún archivo en POST.
 
 ### Requisito 7 - Parámetros de consulta
 **Archivo:** `req-06-07-SolicitudHTTP.cs`

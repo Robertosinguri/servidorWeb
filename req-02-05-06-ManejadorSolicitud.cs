@@ -41,7 +41,8 @@ namespace ServidorWeb
     │  datos recibidos."                                      │
     └─────────────────────────────────────────────────────────┘
     - GET: se sirve el archivo solicitado (flujo normal)
-    - POST: se procesa igual, pero además se loguea el cuerpo
+    - POST: solo se loguean los datos recibidos, no se sirve
+      ningún archivo. Responde 200 OK sin contenido.
     ═══════════════════════════════════════════════════════════════
     */
 
@@ -76,6 +77,24 @@ namespace ServidorWeb
                     return;
                 }
 
+                // ── Req 6: POST - solo loguear datos recibidos ──
+                if (solicitud.Metodo == "POST")
+                {
+                    string parametrosStr = ObtenerParametrosComoString(solicitud);
+                    string? cuerpoLog = !string.IsNullOrEmpty(solicitud.Cuerpo)
+                        ? (solicitud.Cuerpo.Length > 500
+                            ? solicitud.Cuerpo[..500] + "... [truncado]"
+                            : solicitud.Cuerpo)
+                        : null;
+
+                    Logger.Registrar(solicitud.IPOrigen, solicitud.Metodo,
+                                     solicitud.Ruta, "200", parametrosStr, cuerpoLog);
+
+                    byte[] respuestaOK = RespuestaHTTP.OK([], "text/plain", false);
+                    EnviarRespuesta(respuestaOK);
+                    return;
+                }
+
                 // ── Req 2: Determinar la ruta del archivo ──
                 // ObtenerRutaArchivo() convierte "/" en "/index.html"
                 string rutaArchivo = ObtenerRutaArchivo(solicitud.Ruta);
@@ -105,19 +124,10 @@ namespace ServidorWeb
                 byte[] respuesta = RespuestaHTTP.OK(contenidoArchivo, tipoMIME, usarCompresion);
                 EnviarRespuesta(respuesta);
 
-                // ── Req 6: Registrar en el log (incluyendo POST) ──
+                // ── Req 6: Registrar en el log ──
                 string parametrosStrLog = ObtenerParametrosComoString(solicitud);
-                string? cuerpoLog = null;
-
-                if (solicitud.Metodo == "POST" && !string.IsNullOrEmpty(solicitud.Cuerpo))
-                {
-                    cuerpoLog = solicitud.Cuerpo.Length > 500
-                        ? solicitud.Cuerpo[..500] + "... [truncado]"
-                        : solicitud.Cuerpo;
-                }
-
                 Logger.Registrar(solicitud.IPOrigen, solicitud.Metodo,
-                                 solicitud.Ruta, "200", parametrosStrLog, cuerpoLog);
+                                 solicitud.Ruta, "200", parametrosStrLog);
             }
             catch (Exception ex)
             {

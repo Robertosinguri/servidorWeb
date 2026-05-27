@@ -1,294 +1,65 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Servidor Web C# - Programación Concurrente</title>
+    <title>Servidor Web C#</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-            color: #eee;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            max-width: 800px;
-            width: 100%;
-            background: rgba(255,255,255,0.05);
-            border-radius: 20px;
-            padding: 40px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-        }
-        h1 {
-            font-size: 2.5em;
-            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .subtitle {
-            text-align: center;
-            color: #888;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-        .status {
-            background: rgba(0,210,255,0.1);
-            border: 1px solid rgba(0,210,255,0.3);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 25px;
-            text-align: center;
-        }
-        .status .dot {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            background: #00ff88;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-            margin-right: 8px;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; box-shadow: 0 0 10px #00ff88; }
-            50% { opacity: 0.5; box-shadow: 0 0 20px #00ff88; }
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 25px;
-        }
-        .info-card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 10px;
-            padding: 15px;
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        .info-card h3 {
-            color: #00d2ff;
-            font-size: 0.9em;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-        }
-        .info-card p {
-            color: #ccc;
-            font-size: 0.95em;
-        }
-        .info-card .value {
-            color: #fff;
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-        .test-section {
-            background: rgba(255,255,255,0.03);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .test-section h2 {
-            color: #3a7bd5;
-            margin-bottom: 15px;
-            font-size: 1.3em;
-        }
-        .test-buttons {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9em;
-            font-weight: 600;
-            transition: all 0.3s;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #00d2ff, #3a7bd5);
-            color: #fff;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0,210,255,0.3);
-        }
-        .btn-success {
-            background: linear-gradient(135deg, #00b894, #00cec9);
-            color: #fff;
-        }
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0,184,148,0.3);
-        }
-        .btn-danger {
-            background: linear-gradient(135deg, #e17055, #d63031);
-            color: #fff;
-        }
-        .btn-danger:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(214,48,49,0.3);
-        }
-        .btn-warning {
-            background: linear-gradient(135deg, #fdcb6e, #e17055);
-            color: #fff;
-        }
-        .btn-warning:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(253,203,110,0.3);
-        }
-        .btn-info {
-            background: linear-gradient(135deg, #74b9ff, #0984e3);
-            color: #fff;
-        }
-        .btn-info:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(9,132,227,0.3);
-        }
-        .response-area {
-            background: rgba(0,0,0,0.3);
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 0.85em;
-            min-height: 60px;
-            white-space: pre-wrap;
-            word-break: break-all;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .footer {
-            text-align: center;
-            color: #555;
-            font-size: 0.85em;
-            margin-top: 20px;
-        }
-        .footer a {
-            color: #00d2ff;
-            text-decoration: none;
-        }
-        @media (max-width: 600px) {
-            .info-grid { grid-template-columns: 1fr; }
-            .container { padding: 20px; }
-            h1 { font-size: 1.8em; }
+            font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+            background: #fff;
+            color: #000;
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>🚀 Servidor Web C#</h1>
-        <p class="subtitle">Programación Concurrente con Hilos • Socket TCP • HTTP/1.1</p>
 
-        <div class="status">
-            <span class="dot"></span>
-            <strong>Servidor en ejecución</strong> — Atendiendo solicitudes concurrentemente
-        </div>
+    <h1>PROGRAMACION SOBRE REDES</h1>
+    <b>IFTS 11 - 2026</b>
+    <p>Docente: Victor D'Angela</p>
 
-        <div class="info-grid">
-            <div class="info-card">
-                <h3>📡 Protocolo</h3>
-                <p>HTTP/1.1 sobre <span class="value">TCP</span></p>
-            </div>
-            <div class="info-card">
-                <h3>🧵 Concurrencia</h3>
-                <p>Pool de <span class="value">10 hilos</span></p>
-            </div>
-            <div class="info-card">
-                <h3>📦 Compresión</h3>
-                <p><span class="value">GZip</span> en respuestas de texto</p>
-            </div>
-            <div class="info-card">
-                <h3>📋 Logging</h3>
-                <p>Archivo por día (<span class="value">logs/</span>)</p>
-            </div>
-        </div>
+    <hr>
 
-        <div class="test-section">
-            <h2>🧪 Pruebas del Servidor</h2>
-            <div class="test-buttons">
-                <button class="btn btn-primary" onclick="testGET()">GET /</button>
-                <button class="btn btn-success" onclick="testGETParams()">GET con parámetros</button>
-                <button class="btn btn-warning" onclick="testPOST()">POST con datos</button>
-                <button class="btn btn-danger" onclick="test404()">GET /no-existe</button>
-                <button class="btn btn-info" onclick="testCompresion()">GET con compresión</button>
-            </div>
-            <div id="response" class="response-area">Haz clic en un botón para probar...</div>
-        </div>
+    <h2>PROYECTO FINAL</h2>
 
-        <div class="footer">
-            <p>Servidor Web C# • Proyecto de Redes • Programación Concurrente</p>
-            <p><a href="#" onclick="testGET()">Refrescar página</a></p>
-        </div>
-    </div>
+    <h2>Informacion</h2>
+    <ul>
+        <li>Protocolo: HTTP/1.1 sobre TCP</li>
+        <li>Concurrencia: ThreadPool + SemaphoreSlim(50) + lock</li>
+        <li>Compresion: GZip en respuestas de texto</li>
+        <li>Logging: Archivo por dia en logs/</li>
+        <li>Puerto: 8080</li>
+    </ul>
 
-    <script>
-        const responseArea = document.getElementById('response');
+    <hr>
 
-        function showResponse(label, data) {
-            responseArea.textContent = `📥 ${label}\n\n${data}`;
-        }
+    <h2>Requisitos</h2>
+    <ol>
+        <li>Numero indefinido de solicitudes en forma concurrente</li>
+        <li>Index.html por defecto</li>
+        <li>Carpeta raiz configurable - wwwroot/</li>
+        <li>Puerto configurable - 8080</li>
+        <li>Error 404 personalizado</li>
+        <li>GET y POST - POST solo loguea datos</li>
+        <li>Parametros de consulta - Query string</li>
+        <li>Compresion GZip</li>
+        <li>Log por dia</li>
+        <li>Sockets TCP</li>
+    </ol>
 
-        function showError(label, err) {
-            responseArea.textContent = `❌ ${label}\n\nError: ${err}`;
-        }
+    <hr>
 
-        async function testGET() {
-            try {
-                const res = await fetch('/');
-                const text = await res.text();
-                showResponse(`GET / → ${res.status} ${res.statusText} (${text.length} bytes)`, text.substring(0, 500));
-            } catch(e) { showError('GET /', e); }
-        }
+    <h2>Pruebas</h2>
+    <p>
+        <a href="?nombre=Juan&edad=25">GET con parametros</a> |
+        <a href="/no-existe.html">Probar 404</a>
+    </p>
 
-        async function testGETParams() {
-            try {
-                const res = await fetch('/?nombre=Juan&edad=25&ciudad=Buenos+Aires');
-                const text = await res.text();
-                showResponse(`GET /?nombre=Juan&edad=25 → ${res.status}`, 'Parámetros enviados. Revisa el archivo de log.');
-            } catch(e) { showError('GET con parámetros', e); }
-        }
+    <hr>
 
-        async function testPOST() {
-            try {
-                const res = await fetch('/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'usuario=test&mensaje=Hola+servidor&accion=prueba'
-                });
-                const text = await res.text();
-                showResponse(`POST / → ${res.status}`, 'Datos POST enviados. Revisa el archivo de log.');
-            } catch(e) { showError('POST', e); }
-        }
+    <p><small>IFTS 11 - Programacion sobre redes - proyecto final - 2026</small></p>
 
-        async function test404() {
-            try {
-                const res = await fetch('/archivo-inexistente.html');
-                const text = await res.text();
-                showResponse(`GET /no-existe → ${res.status} ${res.statusText}`, text.substring(0, 500));
-            } catch(e) { showError('GET 404', e); }
-        }
-
-        async function testCompresion() {
-            try {
-                const res = await fetch('/');
-                const contentEncoding = res.headers.get('Content-Encoding');
-                const text = await res.text();
-                showResponse(`GET / (comprimido) → ${res.status}\nContent-Encoding: ${contentEncoding || 'ninguno'}`, text.substring(0, 500));
-            } catch(e) { showError('GET compresión', e); }
-        }
-    </script>
 </body>
+
 </html>
