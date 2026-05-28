@@ -21,7 +21,7 @@ El parseo del protocolo HTTP/1.1 se hace manualmente.
 
 using System;
 
-namespace ServidorWeb
+namespace ServidorWeb;
 
 class Program
 {
